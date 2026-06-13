@@ -383,10 +383,12 @@ void TileMesh::build(const LevelData& level, const std::string& fillColorHex, co
         for (auto& inst : m_shapes[gi].instances) {
             boundsData[ti * 8 + 0] = (float)inst.minX;
             boundsData[ti * 8 + 1] = (float)inst.minY;
-            boundsData[ti * 8 + 2] = (float)inst.maxX;
-            boundsData[ti * 8 + 3] = (float)inst.maxY;
-            boundsData[ti * 8 + 4] = 0; boundsData[ti * 8 + 5] = 0;
-            boundsData[ti * 8 + 6] = 0; boundsData[ti * 8 + 7] = 0;
+            boundsData[ti * 8 + 2] = 0;
+            boundsData[ti * 8 + 3] = 0;
+            boundsData[ti * 8 + 4] = (float)inst.maxX;
+            boundsData[ti * 8 + 5] = (float)inst.maxY;
+            boundsData[ti * 8 + 6] = 0;
+            boundsData[ti * 8 + 7] = 0;
             posData[ti * 4 + 0] = (float)inst.offX;
             posData[ti * 4 + 1] = (float)inst.offY;
             posData[ti * 4 + 2] = inst.offZ;
