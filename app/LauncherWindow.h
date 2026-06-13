@@ -10,6 +10,7 @@ struct LauncherConfig {
     std::string backgroundColor  = "000000";
     bool   autoStroke   = true;
     bool   enableHitsounds = true;
+    bool   forceHitsounds = false;  // ignore level hitsounds, always use default
     int  resolutionW = 1280;
     int  resolutionH = 720;
     bool fullscreen = false;
