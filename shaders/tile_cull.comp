@@ -1,0 +1,72 @@
+#version 460
+
+// GPU tile frustum culling — writes camera-relative instance offsets and
+// marks visible tiles. Output is a visibleFlags array (1=visible, 0=culled)
+// and camera-relative offsets for each tile.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// ---- Push constants: frustum planes + camera position ----
+layout(push_constant) uniform PushConstants {
+    vec4 frustum[6];     // 6 plane equations (nx, ny, nz, d) — all in world space
+    vec2 camWorld;        // camera target (x, y) in world space
+} pc;
+
+// ---- Input: per-tile AABB data (uploaded once at level load) ----
+layout(std430, set = 0, binding = 0) readonly buffer TileBounds {
+    vec4 bounds[];  // [minX, minY, maxX, maxY] per tile, 2 vec4 per tile (boundsMin, boundsMax) interleaved
+} uTileBounds;
+
+// ---- Input: per-tile world positions ----
+layout(std430, set = 0, binding = 1) readonly buffer TilePositions {
+    vec4 worldPos[];  // [x, y, z, padding] per tile
+} uTilePositions;
+
+// ---- Output: visible flags (1 = visible, 0 = culled) ----
+layout(std430, set = 0, binding = 2) buffer VisibleFlags {
+    uint flags[];  // per-tile visibility flag (atomicOr-able)
+} uVisible;
+
+// ---- Output: camera-relative offsets for instance buffer ----
+layout(std430, set = 0, binding = 3) buffer InstanceOffsets {
+    float offsets[];  // [offX, offY, offZ] per tile (packed, 3 floats per tile)
+} uOffsets;
+
+// Fast AABB vs 6-plane frustum test (returns true if outside any plane)
+bool frustumCull(vec3 bmin, vec3 bmax) {
+    for (int p = 0; p < 6; p++) {
+        vec3 pv;
+        pv.x = pc.frustum[p].x > 0.0 ? bmax.x : bmin.x;
+        pv.y = pc.frustum[p].y > 0.0 ? bmax.y : bmin.y;
+        pv.z = pc.frustum[p].z > 0.0 ? bmax.z : bmin.z;
+        if (dot(pc.frustum[p].xyz, pv) + pc.frustum[p].w < 0.0)
+            return true;
+    }
+    return false;
+}
+
+void main() {
+    uint tid = gl_GlobalInvocationID.x;
+    uint count = uint(uTilePositions.worldPos.length());
+    if (tid >= count) return;
+
+    // Read AABB: 2 vec4 per tile (boundsMin, boundsMax)
+    vec4 bmin = uTileBounds.bounds[tid * 2u];
+    vec4 bmax = uTileBounds.bounds[tid * 2u + 1u];
+
+    // Frustum test
+    if (frustumCull(bmin.xyz, bmax.xyz)) {
+        uVisible.flags[tid] = 0u;
+        return;
+    }
+
+    // Visible
+    uVisible.flags[tid] = 1u;
+
+    // Write camera-relative offset
+    vec4 wp = uTilePositions.worldPos[tid];
+    uint offIdx = tid * 3u;
+    uOffsets.offsets[offIdx]     = wp.x - pc.camWorld.x;
+    uOffsets.offsets[offIdx + 1u] = wp.y - pc.camWorld.y;
+    uOffsets.offsets[offIdx + 2u] = wp.z;
+}
