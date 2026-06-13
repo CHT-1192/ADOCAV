@@ -1,0 +1,76 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  windows:
+    strategy:
+      matrix:
+        portable: [false, true]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vulkan SDK
+        uses: lunarg/setup-vulkan-sdk@v1
+        with:
+          vulkan-sdk-version: "1.4.350.0"
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+            git
+
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DADOCAV_PORTABLE=${{ matrix.portable == true && 'ON' || 'OFF' }}
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows${{ matrix.portable && '-portable' || '' }}
+          path: build/ADOCAV*.exe
+
+  linux:
+    strategy:
+      matrix:
+        portable: [false, true]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config \
+            libwayland-dev libxkbcommon-dev libgl-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libvulkan-dev glslang-tools
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DADOCAV_PORTABLE=${{ matrix.portable == true && 'ON' || 'OFF' }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux${{ matrix.portable && '-portable' || '' }}
+          path: build/ADOCAV*
