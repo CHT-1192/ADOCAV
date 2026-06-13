@@ -34,6 +34,16 @@ if(NOT Vulkan_FOUND)
     message(FATAL_ERROR "Vulkan SDK not found. Install from https://vulkan.lunarg.com/")
 endif()
 
+# glslc: prefer Vulkan_GLSLC_EXECUTABLE, fall back to PATH
+if(NOT Vulkan_GLSLC_EXECUTABLE)
+    find_program(GLSLC_EXECUTABLE glslc)
+    if(GLSLC_EXECUTABLE)
+        set(Vulkan_GLSLC_EXECUTABLE ${GLSLC_EXECUTABLE})
+    else()
+        message(FATAL_ERROR "glslc not found. Install Vulkan SDK or glslang-tools.")
+    endif()
+endif()
+
 # ---- Dependencies via FetchContent ----
 include(FetchContent)
 
