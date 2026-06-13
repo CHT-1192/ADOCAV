@@ -6,3 +6,4 @@ build_debug/
 *.exe
 CLAUDE.md
 test/
+b/

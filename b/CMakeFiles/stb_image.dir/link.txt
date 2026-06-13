@@ -1,2 +1,0 @@
-C:\msys64\ucrt64\bin\ar.exe qc libstb_image.a CMakeFiles/stb_image.dir/util/stb_impl.cpp.obj
-C:\msys64\ucrt64\bin\ranlib.exe libstb_image.a
