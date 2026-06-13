@@ -15,12 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1.0.0
+      - name: Setup Vulkan SDK
+        uses: humbletim/setup-vulkan-sdk@v1.2.1
         with:
-          vulkan_version: 1.4.350.0
-          stripdown: true
-          cache: true
+          vulkan-query-version: 1.4.350.0
+          vulkan-components: Vulkan-Headers, Vulkan-Loader, Glslang
+          vulkan-use-cache: true
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -56,13 +56,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Vulkan SDK
+        uses: humbletim/setup-vulkan-sdk@v1.2.1
+        with:
+          vulkan-query-version: 1.4.350.0
+          vulkan-components: Vulkan-Headers, Vulkan-Loader, Glslang
+          vulkan-use-cache: true
+
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config \
             libwayland-dev libxkbcommon-dev libgl-dev \
-            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            libvulkan-dev glslang-tools
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 
       - name: Configure
         run: |
