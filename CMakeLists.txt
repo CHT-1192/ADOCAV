@@ -34,13 +34,20 @@ if(NOT Vulkan_FOUND)
     message(FATAL_ERROR "Vulkan SDK not found. Install from https://vulkan.lunarg.com/")
 endif()
 
-# glslc: prefer Vulkan_GLSLC_EXECUTABLE, fall back to PATH
+# SPIR-V compiler: prefer glslc, fall back to glslangValidator
+set(SPIRV_COMPILER_FLAGS "")
 if(NOT Vulkan_GLSLC_EXECUTABLE)
     find_program(GLSLC_EXECUTABLE glslc)
+    if(NOT GLSLC_EXECUTABLE)
+        find_program(GLSLC_EXECUTABLE glslangValidator)
+        if(GLSLC_EXECUTABLE)
+            set(SPIRV_COMPILER_FLAGS "-V")  # glslangValidator needs -V for Vulkan SPIR-V
+        endif()
+    endif()
     if(GLSLC_EXECUTABLE)
         set(Vulkan_GLSLC_EXECUTABLE ${GLSLC_EXECUTABLE})
     else()
-        message(FATAL_ERROR "glslc not found. Install Vulkan SDK or glslang-tools.")
+        message(FATAL_ERROR "Neither glslc nor glslangValidator found. Install Vulkan SDK or glslang-tools.")
     endif()
 endif()
 
@@ -173,7 +180,7 @@ foreach(SHADER_FILE ${SHADER_SOURCES})
     set(SPV_FILE ${SHADER_BIN_DIR}/${SHADER_NAME}.${STAGE}.spv)
     add_custom_command(
         OUTPUT ${SPV_FILE}
-        COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${SHADER_FILE} -o ${SPV_FILE}
+        COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${SPIRV_COMPILER_FLAGS} ${SHADER_FILE} -o ${SPV_FILE}
         DEPENDS ${SHADER_FILE}
         COMMENT "Compiling ${SHADER_NAME}.${STAGE} → SPIR-V"
     )
