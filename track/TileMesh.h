@@ -69,6 +69,20 @@ public:
                                  double camX, double camY) const;
 
     bool empty() const;
+    uint32_t totalTileCount() const { return m_totalTileCount; }
+
+    // Buffer accessors for descriptor set creation
+    VkBuffer debugTileBoundsBuf() const { return m_tileBoundsBuf; }
+    VkBuffer debugTilePositionsBuf() const { return m_tilePositionsBuf; }
+    VkBuffer debugVisibleFlagsBuf() const { return m_visibleFlagsBuf; }
+    VkBuffer debugInstanceOffsetsBuf() const { return m_instanceOffsetsBuf; }
+
+    // GPU culling: update visibility + offsets via compute shader
+    void recordCullDispatch(VkCommandBuffer cmd, const VulkanPipeline& pipelines,
+                            VkDescriptorSet ds, float vl, float vr, float vb, float vt,
+                            double camX, double camY) const;
+    // Draw tiles using indirect commands (after GPU culling)
+    void recordIndirectDraws(VkCommandBuffer cmd, const VulkanPipeline& pipelines) const;
 
 private:
     std::vector<ShapeGroup> m_shapes;
@@ -76,7 +90,28 @@ private:
     mutable std::vector<VisibilityCache> m_visCaches;
     mutable std::vector<VisibilityCache> m_iconVisCaches;
 
+    // GPU culling state
+    bool m_gpuCulling = true;
+    uint32_t m_totalTileCount = 0;
+    std::vector<uint32_t> m_groupBaseInstances;  // firstInstance for each shape group
+
+    // Unified GPU buffers for compute shader
+    VkBuffer m_tileBoundsBuf = VK_NULL_HANDLE;
+    VmaAllocation m_tileBoundsAlloc = VK_NULL_HANDLE;
+    VkBuffer m_tilePositionsBuf = VK_NULL_HANDLE;
+    VmaAllocation m_tilePositionsAlloc = VK_NULL_HANDLE;
+    VkBuffer m_instanceOffsetsBuf = VK_NULL_HANDLE;   // VERTEX + STORAGE
+    VmaAllocation m_instanceOffsetsAlloc = VK_NULL_HANDLE;
+    VkBuffer m_visibleFlagsBuf = VK_NULL_HANDLE;
+    VmaAllocation m_visibleFlagsAlloc = VK_NULL_HANDLE;
+
+    // Indirect draw buffer (one command per shape group)
+    std::vector<VkDrawIndexedIndirectCommand> m_indirectCommands;
+    VkBuffer m_indirectBuf = VK_NULL_HANDLE;
+    VmaAllocation m_indirectAlloc = VK_NULL_HANDLE;
+
     void destroy();
+    void destroyGpuCullBuffers();
     void buildIcons(const LevelData& level);
     static unsigned int hexToUInt(const std::string& hex);
     static bool frustumChanged(const VisibilityCache& cache, float vl, float vr, float vb, float vt);

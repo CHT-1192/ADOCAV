@@ -172,6 +172,20 @@ void showGameWindow(const LauncherConfig& cfg, LoadResult& result) {
     tileMesh.build(*level, cfg.trackFillColor, cfg.trackStrokeColor);
     LOG_I("GameWindow: tile mesh built");
 
+    // Create compute descriptor set for GPU culling
+    VkDescriptorSet computeDS = VK_NULL_HANDLE;
+    if (cfg.gpuCulling && tileMesh.totalTileCount() > 0) {
+        computeDS = pipelines.createComputeDescriptorSet(
+            tileMesh.debugTileBoundsBuf(),
+            tileMesh.debugTilePositionsBuf(),
+            tileMesh.debugVisibleFlagsBuf(),
+            tileMesh.debugInstanceOffsetsBuf()
+        );
+        LOG_I("GameWindow: GPU culling enabled (%u tiles)", tileMesh.totalTileCount());
+    } else {
+        LOG_I("GameWindow: CPU culling (%u tiles)", tileMesh.totalTileCount());
+    }
+
     // Camera
     Camera camera;
     GameInput input; input.camera = &camera;
@@ -384,19 +398,24 @@ void showGameWindow(const LauncherConfig& cfg, LoadResult& result) {
         vkCmdSetViewport(cmd, 0, 1, &viewport);
 
         // ---- Draw tiles (far to near, no depth test) ----
-        // Tiles are drawn from high index (far) to low index (near),
-        // each tile followed by its icon in the same loop
-        // The current implementation draws all tiles first, then all icons.
-        // TODO (Phase 2 per plan): interleave tile+icon per tile from far to near.
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pipeline(VulkanPipeline::Tile));
-
-        // Set VP push constant once (shared by all tile draws)
         auto vpMatrix = camera.viewProj();
-        vkCmdPushConstants(cmd, pipelines.tileLayout(),
-                           VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(vpMatrix));
 
-        tileMesh.recordTileDrawCommands(cmd, pipelines, vl, vr, vb, vt,
+        if (cfg.gpuCulling && computeDS) {
+            // GPU culling: compute shader determines visibility + offsets
+            tileMesh.recordCullDispatch(cmd, pipelines, computeDS, vl, vr, vb, vt,
                                          camera.targetX(), camera.targetY());
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pipeline(VulkanPipeline::Tile));
+            vkCmdPushConstants(cmd, pipelines.tileLayout(),
+                               VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(vpMatrix));
+            tileMesh.recordIndirectDraws(cmd, pipelines);
+        } else {
+            // CPU culling path (original)
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pipeline(VulkanPipeline::Tile));
+            vkCmdPushConstants(cmd, pipelines.tileLayout(),
+                               VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), glm::value_ptr(vpMatrix));
+            tileMesh.recordTileDrawCommands(cmd, pipelines, vl, vr, vb, vt,
+                                             camera.targetX(), camera.targetY());
+        }
 
         // ---- Draw trails (blend enabled, no depth test) ----
         if (playback.isPlaying() && playback.redPlanet() && playback.redPlanet()->trail) {

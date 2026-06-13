@@ -45,13 +45,18 @@ bool VulkanPipeline::createAll(VkRenderPass renderPass, VkExtent2D extent) {
     iconCfg.fragShader = "shaders/icon.frag.spv";
     if (!createGraphicsPipeline(iconCfg, renderPass, extent, Icon)) return false;
 
+    // Compute descriptor layout (shared by both compute pipelines)
+    if (!createComputeDescriptorLayout()) return false;
+
     // Compute pipelines
     Config cullCfg;
+    cullCfg.useDescriptors = true;
     cullCfg.pushConstantSize = 128;  // frustum[6] (96 bytes) + camWorld (8 bytes) = 104
     cullCfg.compShader = "shaders/tile_cull.comp.spv";
     if (!createComputePipeline(cullCfg, TileCull)) return false;
 
     Config offsetCfg;
+    offsetCfg.useDescriptors = true;
     offsetCfg.pushConstantSize = 16;  // camWorld (8 bytes)
     offsetCfg.compShader = "shaders/tile_offset.comp.spv";
     if (!createComputePipeline(offsetCfg, TileOffset)) return false;
@@ -66,6 +71,7 @@ void VulkanPipeline::destroy() {
         if (m_pipelines[i]) { vkDestroyPipeline(device, m_pipelines[i], nullptr); m_pipelines[i] = VK_NULL_HANDLE; }
         if (m_layouts[i])   { vkDestroyPipelineLayout(device, m_layouts[i], nullptr); m_layouts[i] = VK_NULL_HANDLE; }
     }
+    destroyDescriptors();
 }
 
 VkShaderModule VulkanPipeline::loadShader(const std::string& path) {
@@ -106,6 +112,28 @@ VkPipelineLayout VulkanPipeline::createLayout(uint32_t pushSize) {
 
     VkPipelineLayout layout;
     vkCreatePipelineLayout(VulkanCore::instance().device(), &ci, nullptr, &layout);
+    return layout;
+}
+
+// Overload with descriptor set layouts (for compute pipelines)
+static VkPipelineLayout createLayoutWithDS(uint32_t pushSize, VkDescriptorSetLayout dsLayout) {
+    VkPushConstantRange pushRange = {};
+    pushRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pushRange.offset = 0;
+    pushRange.size = pushSize;
+
+    VkPipelineLayoutCreateInfo ci = {};
+    ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ci.setLayoutCount = 1;
+    ci.pSetLayouts = &dsLayout;
+    ci.pushConstantRangeCount = 1;
+    ci.pPushConstantRanges = &pushRange;
+
+    VkPipelineLayout layout;
+    if (vkCreatePipelineLayout(VulkanCore::instance().device(), &ci, nullptr, &layout) != VK_SUCCESS) {
+        LOG_E("VulkanPipeline: Failed to create pipeline layout with descriptor set");
+        return VK_NULL_HANDLE;
+    }
     return layout;
 }
 
@@ -277,7 +305,10 @@ bool VulkanPipeline::createComputePipeline(const Config& cfg, Type type) {
     stage.module = comp;
     stage.pName = "main";
 
-    m_layouts[type] = createLayout(cfg.pushConstantSize);
+    if (cfg.useDescriptors)
+        m_layouts[type] = createLayoutWithDS(cfg.pushConstantSize, m_computeDescriptorLayout);
+    else
+        m_layouts[type] = createLayout(cfg.pushConstantSize);
 
     VkComputePipelineCreateInfo ci = {};
     ci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -291,4 +322,110 @@ bool VulkanPipeline::createComputePipeline(const Config& cfg, Type type) {
 
     vkDestroyShaderModule(device, comp, nullptr);
     return true;
+}
+
+// ---- Descriptor support (for compute shaders) ----
+
+bool VulkanPipeline::createComputeDescriptorLayout() {
+    auto device = VulkanCore::instance().device();
+
+    VkDescriptorSetLayoutBinding bindings[4] = {};
+
+    // Binding 0: TileBounds (read-only SSBO)
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Binding 1: TilePositions (read-only SSBO)
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Binding 2: VisibleFlags (writable SSBO)
+    bindings[2].binding = 2;
+    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[2].descriptorCount = 1;
+    bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Binding 3: InstanceOffsets (writable SSBO)
+    bindings[3].binding = 3;
+    bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[3].descriptorCount = 1;
+    bindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layoutCI = {};
+    layoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutCI.bindingCount = 4;
+    layoutCI.pBindings = bindings;
+
+    if (vkCreateDescriptorSetLayout(device, &layoutCI, nullptr, &m_computeDescriptorLayout) != VK_SUCCESS) {
+        LOG_E("VulkanPipeline: Failed to create compute descriptor set layout");
+        return false;
+    }
+
+    // Descriptor pool (1 set, 4 storage buffers)
+    VkDescriptorPoolSize poolSize = {};
+    poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSize.descriptorCount = 4;
+
+    VkDescriptorPoolCreateInfo poolCI = {};
+    poolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolCI.maxSets = 1;
+    poolCI.poolSizeCount = 1;
+    poolCI.pPoolSizes = &poolSize;
+
+    if (vkCreateDescriptorPool(device, &poolCI, nullptr, &m_descriptorPool) != VK_SUCCESS) {
+        LOG_E("VulkanPipeline: Failed to create descriptor pool");
+        return false;
+    }
+
+    return true;
+}
+
+void VulkanPipeline::destroyDescriptors() {
+    auto device = VulkanCore::instance().device();
+    if (m_descriptorPool)            { vkDestroyDescriptorPool(device, m_descriptorPool, nullptr); m_descriptorPool = VK_NULL_HANDLE; }
+    if (m_computeDescriptorLayout)   { vkDestroyDescriptorSetLayout(device, m_computeDescriptorLayout, nullptr); m_computeDescriptorLayout = VK_NULL_HANDLE; }
+}
+
+VkDescriptorSet VulkanPipeline::createComputeDescriptorSet(
+    VkBuffer tileBoundsBuf, VkBuffer tilePositionsBuf,
+    VkBuffer visibleFlagsBuf, VkBuffer instanceOffsetsBuf) const {
+    auto device = VulkanCore::instance().device();
+
+    VkDescriptorSet ds;
+    VkDescriptorSetAllocateInfo allocI = {};
+    allocI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocI.descriptorPool = m_descriptorPool;
+    allocI.descriptorSetCount = 1;
+    allocI.pSetLayouts = &m_computeDescriptorLayout;
+
+    if (vkAllocateDescriptorSets(device, &allocI, &ds) != VK_SUCCESS) {
+        LOG_E("VulkanPipeline: Failed to allocate compute descriptor set");
+        return VK_NULL_HANDLE;
+    }
+
+    VkDescriptorBufferInfo bufInfos[4] = {};
+    VkWriteDescriptorSet writes[4] = {};
+
+    for (int i = 0; i < 4; i++) {
+        bufInfos[i].offset = 0;
+        bufInfos[i].range = VK_WHOLE_SIZE;
+        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[i].dstSet = ds;
+        writes[i].dstBinding = i;
+        writes[i].dstArrayElement = 0;
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    }
+
+    bufInfos[0].buffer = tileBoundsBuf;       writes[0].pBufferInfo = &bufInfos[0];
+    bufInfos[1].buffer = tilePositionsBuf;    writes[1].pBufferInfo = &bufInfos[1];
+    bufInfos[2].buffer = visibleFlagsBuf;      writes[2].pBufferInfo = &bufInfos[2];
+    bufInfos[3].buffer = instanceOffsetsBuf;  writes[3].pBufferInfo = &bufInfos[3];
+
+    vkUpdateDescriptorSets(device, 4, writes, 0, nullptr);
+    return ds;
 }

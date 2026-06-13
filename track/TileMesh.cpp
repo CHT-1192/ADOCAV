@@ -32,6 +32,7 @@ TileMesh& TileMesh::operator=(TileMesh&& o) noexcept {
 
 void TileMesh::destroy() {
     auto allocator = VulkanCore::instance().allocator();
+    destroyGpuCullBuffers();
     for (auto& s : m_shapes) {
         if (s.instPosBuffer)   vmaDestroyBuffer(allocator, s.instPosBuffer, s.instPosAlloc);
         if (s.instColorBuffer) vmaDestroyBuffer(allocator, s.instColorBuffer, s.instColorAlloc);
@@ -359,6 +360,158 @@ void TileMesh::build(const LevelData& level, const std::string& fillColorHex, co
     LOG_I("Built track: %d tiles → %zu shape groups", n, m_shapes.size());
     m_visCaches.resize(m_shapes.size());
     buildIcons(level);
+
+    // ---- Build unified GPU culling buffers ----
+    destroyGpuCullBuffers();
+    m_totalTileCount = 0;
+    m_groupBaseInstances.clear();
+    m_groupBaseInstances.reserve(m_shapes.size());
+    for (auto& sg : m_shapes) {
+        m_groupBaseInstances.push_back(m_totalTileCount);
+        m_totalTileCount += sg.instanceCount;
+    }
+
+    if (m_totalTileCount == 0) return;
+
+    auto allocator = VulkanCore::instance().allocator();
+
+    // Build flat AABB + position arrays
+    std::vector<float> boundsData(m_totalTileCount * 8);  // 2 vec4 per tile
+    std::vector<float> posData(m_totalTileCount * 4);      // 1 vec4 per tile
+    uint32_t ti = 0;
+    for (auto& sg : m_shapes) {
+        for (auto& inst : sg.instances) {
+            boundsData[ti * 8 + 0] = (float)inst.minX;
+            boundsData[ti * 8 + 1] = (float)inst.minY;
+            boundsData[ti * 8 + 2] = (float)inst.maxX;
+            boundsData[ti * 8 + 3] = (float)inst.maxY;
+            boundsData[ti * 8 + 4] = 0; boundsData[ti * 8 + 5] = 0;
+            boundsData[ti * 8 + 6] = 0; boundsData[ti * 8 + 7] = 0;
+            posData[ti * 4 + 0] = (float)inst.offX;
+            posData[ti * 4 + 1] = (float)inst.offY;
+            posData[ti * 4 + 2] = inst.offZ;
+            posData[ti * 4 + 3] = 0;
+            ti++;
+        }
+    }
+
+    // Tile bounds buffer
+    {
+        VkDeviceSize sz = m_totalTileCount * 8 * sizeof(float);
+        VkBufferCreateInfo ci = {}; ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; ci.size = sz;
+        ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        VmaAllocationCreateInfo aci = {}; aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        vmaCreateBuffer(allocator, &ci, &aci, &m_tileBoundsBuf, &m_tileBoundsAlloc, nullptr);
+        // Staging upload
+        VkBuffer staging; VmaAllocation sAlloc;
+        VkBufferCreateInfo sCI = {}; sCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; sCI.size = sz;
+        sCI.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        VmaAllocationCreateInfo sACI = {}; sACI.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+        vmaCreateBuffer(allocator, &sCI, &sACI, &staging, &sAlloc, nullptr);
+        void* m; vmaMapMemory(allocator, sAlloc, &m); memcpy(m, boundsData.data(), (size_t)sz); vmaUnmapMemory(allocator, sAlloc);
+        VkCommandBuffer cmd;
+        VkCommandBufferAllocateInfo ai = {}; ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        ai.commandPool = VulkanCore::instance().graphicsCommandPool(); ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; ai.commandBufferCount = 1;
+        vkAllocateCommandBuffers(VulkanCore::instance().device(), &ai, &cmd);
+        VkCommandBufferBeginInfo bi = {}; bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cmd, &bi);
+        VkBufferCopy r = {0, 0, sz}; vkCmdCopyBuffer(cmd, staging, m_tileBoundsBuf, 1, &r);
+        vkEndCommandBuffer(cmd);
+        VkSubmitInfo si = {}; si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount = 1; si.pCommandBuffers = &cmd;
+        vkQueueSubmit(VulkanCore::instance().graphicsQueue(), 1, &si, VK_NULL_HANDLE);
+        vkQueueWaitIdle(VulkanCore::instance().graphicsQueue());
+        vkFreeCommandBuffers(VulkanCore::instance().device(), VulkanCore::instance().graphicsCommandPool(), 1, &cmd);
+        vmaDestroyBuffer(allocator, staging, sAlloc);
+    }
+
+    // Tile positions buffer
+    {
+        VkDeviceSize sz = m_totalTileCount * 4 * sizeof(float);
+        VkBufferCreateInfo ci = {}; ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; ci.size = sz;
+        ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        VmaAllocationCreateInfo aci = {}; aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        vmaCreateBuffer(allocator, &ci, &aci, &m_tilePositionsBuf, &m_tilePositionsAlloc, nullptr);
+        VkBuffer staging; VmaAllocation sAlloc;
+        VkBufferCreateInfo sCI = {}; sCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; sCI.size = sz;
+        sCI.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        VmaAllocationCreateInfo sACI = {}; sACI.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+        vmaCreateBuffer(allocator, &sCI, &sACI, &staging, &sAlloc, nullptr);
+        void* m; vmaMapMemory(allocator, sAlloc, &m); memcpy(m, posData.data(), (size_t)sz); vmaUnmapMemory(allocator, sAlloc);
+        VkCommandBuffer cmd;
+        VkCommandBufferAllocateInfo ai = {}; ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        ai.commandPool = VulkanCore::instance().graphicsCommandPool(); ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; ai.commandBufferCount = 1;
+        vkAllocateCommandBuffers(VulkanCore::instance().device(), &ai, &cmd);
+        VkCommandBufferBeginInfo bi = {}; bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cmd, &bi);
+        VkBufferCopy r = {0, 0, sz}; vkCmdCopyBuffer(cmd, staging, m_tilePositionsBuf, 1, &r);
+        vkEndCommandBuffer(cmd);
+        VkSubmitInfo si = {}; si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount = 1; si.pCommandBuffers = &cmd;
+        vkQueueSubmit(VulkanCore::instance().graphicsQueue(), 1, &si, VK_NULL_HANDLE);
+        vkQueueWaitIdle(VulkanCore::instance().graphicsQueue());
+        vkFreeCommandBuffers(VulkanCore::instance().device(), VulkanCore::instance().graphicsCommandPool(), 1, &cmd);
+        vmaDestroyBuffer(allocator, staging, sAlloc);
+    }
+
+    // Instance offsets buffer (writable by compute, readable as vertex input)
+    {
+        VkDeviceSize sz = m_totalTileCount * 3 * sizeof(float);
+        VkBufferCreateInfo ci = {}; ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; ci.size = sz;
+        ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        VmaAllocationCreateInfo aci = {};
+        aci.usage = VMA_MEMORY_USAGE_AUTO;
+        aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        vmaCreateBuffer(allocator, &ci, &aci, &m_instanceOffsetsBuf, &m_instanceOffsetsAlloc, nullptr);
+    }
+
+    // Visible flags buffer
+    {
+        VkDeviceSize sz = m_totalTileCount * sizeof(uint32_t);
+        VkBufferCreateInfo ci = {}; ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; ci.size = sz;
+        ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        VmaAllocationCreateInfo aci = {};
+        aci.usage = VMA_MEMORY_USAGE_AUTO;
+        aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        vmaCreateBuffer(allocator, &ci, &aci, &m_visibleFlagsBuf, &m_visibleFlagsAlloc, nullptr);
+    }
+
+    // Build indirect commands (instanceCount = 0 initially, filled by GPU)
+    m_indirectCommands.resize(m_shapes.size());
+    for (size_t gi = 0; gi < m_shapes.size(); gi++) {
+        m_indirectCommands[gi] = {};
+        m_indirectCommands[gi].indexCount = m_shapes[gi].indexCount;
+        m_indirectCommands[gi].instanceCount = 0;  // GPU fills this
+        m_indirectCommands[gi].firstIndex = 0;
+        m_indirectCommands[gi].vertexOffset = 0;
+        m_indirectCommands[gi].firstInstance = m_groupBaseInstances[gi];
+    }
+
+    // Indirect draw buffer
+    {
+        VkDeviceSize sz = m_indirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand);
+        VkBufferCreateInfo ci = {}; ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; ci.size = sz;
+        ci.usage = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        VmaAllocationCreateInfo aci = {}; aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        vmaCreateBuffer(allocator, &ci, &aci, &m_indirectBuf, &m_indirectAlloc, nullptr);
+        VkBuffer staging; VmaAllocation sAlloc;
+        VkBufferCreateInfo sCI = {}; sCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; sCI.size = sz;
+        sCI.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        VmaAllocationCreateInfo sACI = {}; sACI.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+        vmaCreateBuffer(allocator, &sCI, &sACI, &staging, &sAlloc, nullptr);
+        void* m; vmaMapMemory(allocator, sAlloc, &m); memcpy(m, m_indirectCommands.data(), (size_t)sz); vmaUnmapMemory(allocator, sAlloc);
+        VkCommandBuffer cmd;
+        VkCommandBufferAllocateInfo ai = {}; ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        ai.commandPool = VulkanCore::instance().graphicsCommandPool(); ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; ai.commandBufferCount = 1;
+        vkAllocateCommandBuffers(VulkanCore::instance().device(), &ai, &cmd);
+        VkCommandBufferBeginInfo bi = {}; bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cmd, &bi);
+        VkBufferCopy r = {0, 0, sz}; vkCmdCopyBuffer(cmd, staging, m_indirectBuf, 1, &r);
+        vkEndCommandBuffer(cmd);
+        VkSubmitInfo si = {}; si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount = 1; si.pCommandBuffers = &cmd;
+        vkQueueSubmit(VulkanCore::instance().graphicsQueue(), 1, &si, VK_NULL_HANDLE);
+        vkQueueWaitIdle(VulkanCore::instance().graphicsQueue());
+        vkFreeCommandBuffers(VulkanCore::instance().device(), VulkanCore::instance().graphicsCommandPool(), 1, &cmd);
+        vmaDestroyBuffer(allocator, staging, sAlloc);
+    }
 }
 
 bool TileMesh::frustumChanged(const VisibilityCache& cache, float vl, float vr, float vb, float vt) {
@@ -552,4 +705,81 @@ unsigned int TileMesh::hexToUInt(const std::string& hex) {
         else break;
     }
     return v;
+}
+
+// ---- GPU culling ----
+
+void TileMesh::destroyGpuCullBuffers() {
+    auto allocator = VulkanCore::instance().allocator();
+    if (m_tileBoundsBuf)       { vmaDestroyBuffer(allocator, m_tileBoundsBuf, m_tileBoundsAlloc); m_tileBoundsBuf = VK_NULL_HANDLE; }
+    if (m_tilePositionsBuf)    { vmaDestroyBuffer(allocator, m_tilePositionsBuf, m_tilePositionsAlloc); m_tilePositionsBuf = VK_NULL_HANDLE; }
+    if (m_instanceOffsetsBuf)  { vmaDestroyBuffer(allocator, m_instanceOffsetsBuf, m_instanceOffsetsAlloc); m_instanceOffsetsBuf = VK_NULL_HANDLE; }
+    if (m_visibleFlagsBuf)      { vmaDestroyBuffer(allocator, m_visibleFlagsBuf, m_visibleFlagsAlloc); m_visibleFlagsBuf = VK_NULL_HANDLE; }
+    if (m_indirectBuf)         { vmaDestroyBuffer(allocator, m_indirectBuf, m_indirectAlloc); m_indirectBuf = VK_NULL_HANDLE; }
+}
+
+void TileMesh::recordCullDispatch(VkCommandBuffer cmd, const VulkanPipeline& pipelines,
+                                   VkDescriptorSet ds, float viewL, float viewR, float viewB, float viewT,
+                                   double camX, double camY) const {
+    if (m_totalTileCount == 0 || !ds) return;
+
+    // Build frustum planes from view bounds (world-space AABB test uses simple box test)
+    // Push constants: 6 frustum vec4 + camWorld vec2
+    struct CullPush {
+        float frustum[4 * 6];  // 6 vec4
+        float camWorld[2];
+    };
+    CullPush pc = {};
+
+    // Frustum planes as AABB bounds (tile_cull uses AABB-vs-bounds, not real frustum)
+    for (int i = 0; i < 24; i++) pc.frustum[i] = 0;
+    // Use simple AABB: pass view bounds as the "frustum" (shader checks tile AABB vs view rect)
+    pc.frustum[0] = (float)viewL; pc.frustum[1] = (float)viewB; pc.frustum[2] = (float)viewR; pc.frustum[3] = (float)viewT;
+    pc.frustum[4] = (float)viewL; pc.frustum[5] = (float)viewB; pc.frustum[6] = (float)viewR; pc.frustum[7] = (float)viewT;
+    pc.camWorld[0] = (float)camX;
+    pc.camWorld[1] = (float)camY;
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelines.pipeline(VulkanPipeline::TileCull));
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelines.tileCullLayout(), 0, 1, &ds, 0, nullptr);
+    vkCmdPushConstants(cmd, pipelines.tileCullLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(CullPush), &pc);
+
+    uint32_t groups = (m_totalTileCount + 63) / 64;
+    vkCmdDispatch(cmd, groups, 1, 1);
+
+    // Barrier: compute write → vertex input + indirect draw
+    VkBufferMemoryBarrier barriers[2] = {};
+    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    barriers[0].buffer = m_instanceOffsetsBuf;
+    barriers[0].size = VK_WHOLE_SIZE;
+
+    barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[1].dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+    barriers[1].buffer = m_indirectBuf;
+    barriers[1].size = VK_WHOLE_SIZE;
+
+    vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+        0, 0, nullptr, 2, barriers, 0, nullptr);
+}
+
+void TileMesh::recordIndirectDraws(VkCommandBuffer cmd, const VulkanPipeline& pipelines) const {
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pipeline(VulkanPipeline::Tile));
+
+    for (size_t gi = 0; gi < m_shapes.size(); gi++) {
+        const auto& sg = m_shapes[gi];
+        VkDeviceSize off = 0;
+        VkBuffer vbs[] = {sg.vertexBuffer, m_instanceOffsetsBuf, sg.instColorBuffer};
+        VkDeviceSize vbo[] = {0, 0, 0};
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vbs[0], &vbo[0]);
+        vkCmdBindVertexBuffers(cmd, 1, 1, &vbs[1], &vbo[1]);
+        vkCmdBindVertexBuffers(cmd, 2, 1, &vbs[2], &vbo[2]);
+        vkCmdBindIndexBuffer(cmd, sg.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+        VkDeviceSize indirectOff = gi * sizeof(VkDrawIndexedIndirectCommand);
+        vkCmdDrawIndexedIndirect(cmd, m_indirectBuf, indirectOff, 1, sizeof(VkDrawIndexedIndirectCommand));
+    }
 }
