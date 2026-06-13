@@ -329,7 +329,7 @@ bool VulkanPipeline::createComputePipeline(const Config& cfg, Type type) {
 bool VulkanPipeline::createComputeDescriptorLayout() {
     auto device = VulkanCore::instance().device();
 
-    VkDescriptorSetLayoutBinding bindings[4] = {};
+    VkDescriptorSetLayoutBinding bindings[5] = {};
 
     // Binding 0: TileBounds (read-only SSBO)
     bindings[0].binding = 0;
@@ -355,9 +355,15 @@ bool VulkanPipeline::createComputeDescriptorLayout() {
     bindings[3].descriptorCount = 1;
     bindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
+    // Binding 4: IndirectCommands (writable SSBO)
+    bindings[4].binding = 4;
+    bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[4].descriptorCount = 1;
+    bindings[4].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
     VkDescriptorSetLayoutCreateInfo layoutCI = {};
     layoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutCI.bindingCount = 4;
+    layoutCI.bindingCount = 5;
     layoutCI.pBindings = bindings;
 
     if (vkCreateDescriptorSetLayout(device, &layoutCI, nullptr, &m_computeDescriptorLayout) != VK_SUCCESS) {
@@ -368,7 +374,7 @@ bool VulkanPipeline::createComputeDescriptorLayout() {
     // Descriptor pool (1 set, 4 storage buffers)
     VkDescriptorPoolSize poolSize = {};
     poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSize.descriptorCount = 4;
+    poolSize.descriptorCount = 5;
 
     VkDescriptorPoolCreateInfo poolCI = {};
     poolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -392,7 +398,8 @@ void VulkanPipeline::destroyDescriptors() {
 
 VkDescriptorSet VulkanPipeline::createComputeDescriptorSet(
     VkBuffer tileBoundsBuf, VkBuffer tilePositionsBuf,
-    VkBuffer visibleFlagsBuf, VkBuffer instanceOffsetsBuf) const {
+    VkBuffer visibleFlagsBuf, VkBuffer instanceOffsetsBuf,
+    VkBuffer indirectBuf) const {
     auto device = VulkanCore::instance().device();
 
     VkDescriptorSet ds;
@@ -407,10 +414,10 @@ VkDescriptorSet VulkanPipeline::createComputeDescriptorSet(
         return VK_NULL_HANDLE;
     }
 
-    VkDescriptorBufferInfo bufInfos[4] = {};
-    VkWriteDescriptorSet writes[4] = {};
+    VkDescriptorBufferInfo bufInfos[5] = {};
+    VkWriteDescriptorSet writes[5] = {};
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         bufInfos[i].offset = 0;
         bufInfos[i].range = VK_WHOLE_SIZE;
         writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -425,7 +432,8 @@ VkDescriptorSet VulkanPipeline::createComputeDescriptorSet(
     bufInfos[1].buffer = tilePositionsBuf;    writes[1].pBufferInfo = &bufInfos[1];
     bufInfos[2].buffer = visibleFlagsBuf;      writes[2].pBufferInfo = &bufInfos[2];
     bufInfos[3].buffer = instanceOffsetsBuf;  writes[3].pBufferInfo = &bufInfos[3];
+    bufInfos[4].buffer = indirectBuf;         writes[4].pBufferInfo = &bufInfos[4];
 
-    vkUpdateDescriptorSets(device, 4, writes, 0, nullptr);
+    vkUpdateDescriptorSets(device, 5, writes, 0, nullptr);
     return ds;
 }

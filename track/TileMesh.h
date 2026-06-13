@@ -76,6 +76,7 @@ public:
     VkBuffer debugTilePositionsBuf() const { return m_tilePositionsBuf; }
     VkBuffer debugVisibleFlagsBuf() const { return m_visibleFlagsBuf; }
     VkBuffer debugInstanceOffsetsBuf() const { return m_instanceOffsetsBuf; }
+    VkBuffer debugIndirectBuf() const { return m_indirectBuf; }
 
     // GPU culling: update visibility + offsets via compute shader
     void recordCullDispatch(VkCommandBuffer cmd, const VulkanPipeline& pipelines,

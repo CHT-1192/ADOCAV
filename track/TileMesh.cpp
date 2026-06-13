@@ -375,12 +375,12 @@ void TileMesh::build(const LevelData& level, const std::string& fillColorHex, co
 
     auto allocator = VulkanCore::instance().allocator();
 
-    // Build flat AABB + position arrays
+    // Build flat AABB + position arrays (with group index in pos.w)
     std::vector<float> boundsData(m_totalTileCount * 8);  // 2 vec4 per tile
     std::vector<float> posData(m_totalTileCount * 4);      // 1 vec4 per tile
     uint32_t ti = 0;
-    for (auto& sg : m_shapes) {
-        for (auto& inst : sg.instances) {
+    for (size_t gi = 0; gi < m_shapes.size(); gi++) {
+        for (auto& inst : m_shapes[gi].instances) {
             boundsData[ti * 8 + 0] = (float)inst.minX;
             boundsData[ti * 8 + 1] = (float)inst.minY;
             boundsData[ti * 8 + 2] = (float)inst.maxX;
@@ -390,7 +390,7 @@ void TileMesh::build(const LevelData& level, const std::string& fillColorHex, co
             posData[ti * 4 + 0] = (float)inst.offX;
             posData[ti * 4 + 1] = (float)inst.offY;
             posData[ti * 4 + 2] = inst.offZ;
-            posData[ti * 4 + 3] = 0;
+            posData[ti * 4 + 3] = (float)gi;  // shape group index
             ti++;
         }
     }
@@ -723,25 +723,28 @@ void TileMesh::recordCullDispatch(VkCommandBuffer cmd, const VulkanPipeline& pip
                                    double camX, double camY) const {
     if (m_totalTileCount == 0 || !ds) return;
 
-    // Build frustum planes from view bounds (world-space AABB test uses simple box test)
-    // Push constants: 6 frustum vec4 + camWorld vec2
+    // Push constants: viewBounds vec4 + camWorld vec2 (matches tile_cull.comp)
     struct CullPush {
-        float frustum[4 * 6];  // 6 vec4
+        float viewBounds[4];  // vl, vb, vr, vt
         float camWorld[2];
+        float pad[2];         // align to 32 bytes
     };
     CullPush pc = {};
 
-    // Frustum planes as AABB bounds (tile_cull uses AABB-vs-bounds, not real frustum)
-    for (int i = 0; i < 24; i++) pc.frustum[i] = 0;
-    // Use simple AABB: pass view bounds as the "frustum" (shader checks tile AABB vs view rect)
-    pc.frustum[0] = (float)viewL; pc.frustum[1] = (float)viewB; pc.frustum[2] = (float)viewR; pc.frustum[3] = (float)viewT;
-    pc.frustum[4] = (float)viewL; pc.frustum[5] = (float)viewB; pc.frustum[6] = (float)viewR; pc.frustum[7] = (float)viewT;
+    pc.viewBounds[0] = (float)(viewL - 20.0);   // vl with margin
+    pc.viewBounds[1] = (float)(viewB - 20.0);   // vb with margin
+    pc.viewBounds[2] = (float)(viewR + 20.0);   // vr with margin
+    pc.viewBounds[3] = (float)(viewT + 20.0);   // vt with margin
     pc.camWorld[0] = (float)camX;
     pc.camWorld[1] = (float)camY;
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelines.pipeline(VulkanPipeline::TileCull));
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelines.tileCullLayout(), 0, 1, &ds, 0, nullptr);
     vkCmdPushConstants(cmd, pipelines.tileCullLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(CullPush), &pc);
+
+    // Reset indirect instance counts to 0 before dispatch
+    for (size_t gi = 0; gi < m_indirectCommands.size(); gi++)
+        vkCmdFillBuffer(cmd, m_indirectBuf, gi * sizeof(VkDrawIndexedIndirectCommand) + 4, 4, 0);
 
     uint32_t groups = (m_totalTileCount + 63) / 64;
     vkCmdDispatch(cmd, groups, 1, 1);

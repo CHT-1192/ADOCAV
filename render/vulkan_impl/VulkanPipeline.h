@@ -52,7 +52,8 @@ public:
     // Create a descriptor set + update with the given buffers
     VkDescriptorSet createComputeDescriptorSet(
         VkBuffer tileBoundsBuf, VkBuffer tilePositionsBuf,
-        VkBuffer visibleFlagsBuf, VkBuffer instanceOffsetsBuf) const;
+        VkBuffer visibleFlagsBuf, VkBuffer instanceOffsetsBuf,
+        VkBuffer indirectBuf) const;
 
 private:
     VkPipeline       m_pipelines[Count] = {};

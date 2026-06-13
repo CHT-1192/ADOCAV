@@ -179,7 +179,8 @@ void showGameWindow(const LauncherConfig& cfg, LoadResult& result) {
             tileMesh.debugTileBoundsBuf(),
             tileMesh.debugTilePositionsBuf(),
             tileMesh.debugVisibleFlagsBuf(),
-            tileMesh.debugInstanceOffsetsBuf()
+            tileMesh.debugInstanceOffsetsBuf(),
+            tileMesh.debugIndirectBuf()
         );
         LOG_I("GameWindow: GPU culling enabled (%u tiles)", tileMesh.totalTileCount());
     } else {
