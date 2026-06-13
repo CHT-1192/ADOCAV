@@ -1,0 +1,2 @@
+C:\msys64\ucrt64\bin\ar.exe qc libminiaudio.a CMakeFiles/miniaudio.dir/miniaudio.c.obj
+C:\msys64\ucrt64\bin\ranlib.exe libminiaudio.a

@@ -1,0 +1,2 @@
+C:\msys64\ucrt64\bin\ar.exe qc libminiaudio_reverb_node.a CMakeFiles/miniaudio_reverb_node.dir/extras/nodes/ma_reverb_node/ma_reverb_node.c.obj
+C:\msys64\ucrt64\bin\ranlib.exe libminiaudio_reverb_node.a

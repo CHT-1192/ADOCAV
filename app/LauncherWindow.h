@@ -17,7 +17,7 @@ struct LauncherConfig {
     bool showTrail = true;
     bool exportHitsounds = false;
     bool cancelled = false;
-    bool gpuCulling = true;    // use GPU compute culling (default on)
+    bool gpuCulling = false;   // GPU culling WIP: indirect draw can't skip invisible instances yet
     bool autoPlay = false;     // auto-start playback after loading
 };
 

@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/CMakeFiles/tinyfiledialogs-populate"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/CMakeFiles/tinyfiledialogs-populate.rule"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/CMakeFiles/tinyfiledialogs-populate-complete.rule"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/tinyfiledialogs-populate-prefix/src/tinyfiledialogs-populate-stamp/tinyfiledialogs-populate-build.rule"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/tinyfiledialogs-populate-prefix/src/tinyfiledialogs-populate-stamp/tinyfiledialogs-populate-configure.rule"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/tinyfiledialogs-populate-prefix/src/tinyfiledialogs-populate-stamp/tinyfiledialogs-populate-download.rule"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/tinyfiledialogs-populate-prefix/src/tinyfiledialogs-populate-stamp/tinyfiledialogs-populate-install.rule"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/tinyfiledialogs-populate-prefix/src/tinyfiledialogs-populate-stamp/tinyfiledialogs-populate-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/tinyfiledialogs-populate-prefix/src/tinyfiledialogs-populate-stamp/tinyfiledialogs-populate-patch.rule"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/tinyfiledialogs-populate-prefix/src/tinyfiledialogs-populate-stamp/tinyfiledialogs-populate-test.rule"
+		},
+		{
+			"file" : "C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/tinyfiledialogs-subbuild/tinyfiledialogs-populate-prefix/src/tinyfiledialogs-populate-stamp/tinyfiledialogs-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"tinyfiledialogs-populate"
+		],
+		"name" : "tinyfiledialogs-populate"
+	}
+}

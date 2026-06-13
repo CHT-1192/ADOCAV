@@ -71,7 +71,7 @@ void showGameWindow(const LauncherConfig& cfg, LoadResult& result) {
 
     // ---- Create GLFW window (Vulkan, no OpenGL context) ----
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
     GLFWwindow* window;
     if (cfg.fullscreen) {

@@ -1,0 +1,1 @@
+ "_deps/glfw-build/src/libglfw3.a" "_deps/glm-build/glm/libglm.a" libstb_image.a libtinyfiledialogs.a "C:/VulkanSDK/1.4.350.0/Lib/vulkan-1.lib" -lole32 -lopengl32 -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 

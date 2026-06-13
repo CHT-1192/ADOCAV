@@ -1,0 +1,14 @@
+# Target labels
+ miniaudio-populate
+# Source files and their labels
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/CMakeFiles/miniaudio-populate
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/CMakeFiles/miniaudio-populate.rule
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/CMakeFiles/miniaudio-populate-complete.rule
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/miniaudio-populate-prefix/src/miniaudio-populate-stamp/miniaudio-populate-build.rule
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/miniaudio-populate-prefix/src/miniaudio-populate-stamp/miniaudio-populate-configure.rule
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/miniaudio-populate-prefix/src/miniaudio-populate-stamp/miniaudio-populate-download.rule
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/miniaudio-populate-prefix/src/miniaudio-populate-stamp/miniaudio-populate-install.rule
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/miniaudio-populate-prefix/src/miniaudio-populate-stamp/miniaudio-populate-mkdir.rule
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/miniaudio-populate-prefix/src/miniaudio-populate-stamp/miniaudio-populate-patch.rule
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/miniaudio-populate-prefix/src/miniaudio-populate-stamp/miniaudio-populate-test.rule
+C:/Users/Xuemin Chen/Projects/ADOCAV/b/_deps/miniaudio-subbuild/miniaudio-populate-prefix/src/miniaudio-populate-stamp/miniaudio-populate-update.rule

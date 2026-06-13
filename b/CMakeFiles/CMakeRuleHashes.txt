@@ -1,0 +1,13 @@
+# Hashes of file build rules.
+2296e38f0f3f2b13074d9942b7be099f CMakeFiles/spirv
+3a12d7f3ad0a14f6880ec0dd4c6cb6a1 _deps/glfw-build/src/CMakeFiles/update_mappings
+086de95951226afa8e7ee032f5301ad9 shaders/icon.frag.spv
+ce65992a66a53ab86025019250179e7f shaders/icon.vert.spv
+7fdd59a2de5cb2eaab79a0984068ea59 shaders/planet.frag.spv
+f2da4feb81f6bd3ca3ddc2e18879e62b shaders/planet.vert.spv
+0c8d6d4a9092332537250a85dc45c532 shaders/tile.frag.spv
+75403834ab364d78b1ee3b7f07b614ba shaders/tile.vert.spv
+9aa08fc3eb578e05cce1f6cb2495e2b1 shaders/tile_cull.comp.spv
+e5dc6f35d33f78112ae7e0161b65128d shaders/tile_offset.comp.spv
+9107c424e5ed3a4bd2ba4a4976a20614 shaders/trail.frag.spv
+788476c409eb36b68c4daf96c462155b shaders/trail.vert.spv

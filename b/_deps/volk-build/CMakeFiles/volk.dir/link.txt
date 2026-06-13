@@ -1,0 +1,2 @@
+C:\msys64\ucrt64\bin\ar.exe qc libvolk.a CMakeFiles/volk.dir/volk.c.obj
+C:\msys64\ucrt64\bin\ranlib.exe libvolk.a
