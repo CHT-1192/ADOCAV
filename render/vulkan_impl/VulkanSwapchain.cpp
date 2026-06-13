@@ -23,6 +23,12 @@ VulkanSwapchain::Support VulkanSwapchain::querySupport(VkPhysicalDevice device, 
 }
 
 VkSurfaceFormatKHR VulkanSwapchain::chooseSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& available) {
+    // Prefer UNORM (linear) to match OpenGL/DirectX color output
+    for (auto& f : available) {
+        if (f.format == VK_FORMAT_B8G8R8A8_UNORM && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+            return f;
+    }
+    // Fallback to SRGB
     for (auto& f : available) {
         if (f.format == VK_FORMAT_B8G8R8A8_SRGB && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
             return f;
