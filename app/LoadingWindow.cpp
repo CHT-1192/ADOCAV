@@ -54,17 +54,54 @@ void showLoadingWindow(std::function<void(LoadingProgress&)> loader) {
     ImGui::GetStyle().ScaleAllSizes(dpiScale);
     float fontSize = 16.0f * dpiScale;
 
+    // Load CJK font
     {
         ImGuiIO& io = ImGui::GetIO();
-        const char* latinFonts[] = {
-            "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf",
+        const char* cjkFonts[] = {
+#ifdef _WIN32
+            "C:/Windows/Fonts/malgun.ttf",
+            "C:/Windows/Fonts/NanumGothic.ttf",
+            "C:/Windows/Fonts/gulim.ttc",
+            "C:/Windows/Fonts/batang.ttc",
+            "C:/Windows/Fonts/msyh.ttc",
+            "C:/Windows/Fonts/msgothic.ttc",
+            "C:/Windows/Fonts/simhei.ttf",
+#else
+            "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            "/usr/share/fonts/nanum/NanumGothic.ttf",
+            "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+#endif
         };
-        bool latinLoaded = false;
-        for (const char* path : latinFonts) {
-            FILE* f = fopen(path, "rb");
-            if (f) { fclose(f); io.Fonts->AddFontFromFileTTF(path, fontSize); latinLoaded = true; break; }
+        static const ImWchar cjkRanges[] = {
+            0x2000, 0x206F, 0x3000, 0x303F, 0x3040, 0x309F,
+            0x30A0, 0x30FF, 0x3130, 0x318F, 0x4E00, 0x9FFF,
+            0xAC00, 0xD7AF, 0xFF00, 0xFFEF, 0,
+        };
+        {
+            const char* latinFonts[] = {
+#ifdef _WIN32
+                "C:/Windows/Fonts/segoeui.ttf",
+                "C:/Windows/Fonts/arial.ttf",
+#endif
+            };
+            bool latinLoaded = false;
+            for (const char* path : latinFonts) {
+                FILE* f = fopen(path, "rb");
+                if (f) { fclose(f); io.Fonts->AddFontFromFileTTF(path, fontSize); latinLoaded = true; break; }
+            }
+            if (!latinLoaded) io.Fonts->AddFontDefault();
         }
-        if (!latinLoaded) io.Fonts->AddFontDefault();
+        ImFontConfig cfg;
+        cfg.MergeMode = true;
+        for (const char* path : cjkFonts) {
+            FILE* f = fopen(path, "rb");
+            if (f) { fclose(f); io.Fonts->AddFontFromFileTTF(path, fontSize, &cfg, cjkRanges); break; }
+        }
     }
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
