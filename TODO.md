@@ -4,6 +4,7 @@
 - [ ] GPU 反馈：GPU tile culling 已写完（shader + pipeline + descriptor），但需要重做 indirect draw 或 stream compaction 才能跳过中间不可见实例。当前默认关闭。
 
 ## 多线程
+- [x] CPU 剔除多线程化（shape group 分块并行）
 - [ ] precalculateTiming 多线程化
 - [ ] 线程化 command buffer 录制
 

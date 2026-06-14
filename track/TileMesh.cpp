@@ -8,6 +8,8 @@
 #include <tuple>
 #include <unordered_map>
 #include <cstdio>
+#include <thread>
+#include <future>
 
 // Geometry cache (persists across builds)
 struct CachedGeo { std::vector<float> interleaved; std::vector<unsigned> indices; unsigned idxCount = 0; };
@@ -522,23 +524,17 @@ bool TileMesh::frustumChanged(const VisibilityCache& cache, float vl, float vr, 
         || std::abs((float)cache.vb - vb) > 0.5f || std::abs((float)cache.vt - vt) > 0.5f;
 }
 
-void TileMesh::shapeDrawCommands(VkCommandBuffer cmd, const VulkanPipeline& pipelines,
-                                   const std::vector<ShapeGroup>& groups,
-                                   std::vector<VisibilityCache>& caches,
-                                   float viewL, float viewR, float viewB, float viewT,
-                                   double camX, double camY, bool isIcon) const {
-    double margin = 20.0;
-    double vl = viewL - margin, vr = viewR + margin;
-    double vb = viewB - margin, vt = viewT + margin;
-
-    auto pipeType = isIcon ? VulkanPipeline::Icon : VulkanPipeline::Tile;
-    auto layout = isIcon ? pipelines.tileLayout() : pipelines.tileLayout();
-
-    for (size_t si = 0; si < groups.size(); si++) {
+// Phase 1: CPU culling (can run in parallel across groups)
+static void cullAndOffsetGroups(const std::vector<ShapeGroup>& groups,
+                                 std::vector<VisibilityCache>& caches,
+                                 size_t start, size_t end,
+                                 double vl, double vr, double vb, double vt,
+                                 double camX, double camY) {
+    for (size_t si = start; si < end; si++) {
         const auto& sg = groups[si];
         auto& cache = caches[si];
 
-        if (!cache.valid || frustumChanged(cache, (float)vl, (float)vr, (float)vb, (float)vt)) {
+        if (!cache.valid || TileMesh::frustumCheck(cache, (float)vl, (float)vr, (float)vb, (float)vt)) {
             cache.indices.clear();
             cache.indices.reserve(sg.instances.size());
             for (int ii = (int)sg.instances.size() - 1; ii >= 0; ii--) {
@@ -560,6 +556,48 @@ void TileMesh::shapeDrawCommands(VkCommandBuffer cmd, const VulkanPipeline& pipe
             cache.offsets[i * 3 + 1] = (float)(inst.offY - camY);
             cache.offsets[i * 3 + 2] = inst.offZ;
         }
+    }
+}
+
+void TileMesh::shapeDrawCommands(VkCommandBuffer cmd, const VulkanPipeline& pipelines,
+                                   const std::vector<ShapeGroup>& groups,
+                                   std::vector<VisibilityCache>& caches,
+                                   float viewL, float viewR, float viewB, float viewT,
+                                   double camX, double camY, bool isIcon) const {
+    double margin = 20.0;
+    double vl = viewL - margin, vr = viewR + margin;
+    double vb = viewB - margin, vt = viewT + margin;
+
+    auto pipeType = isIcon ? VulkanPipeline::Icon : VulkanPipeline::Tile;
+
+    size_t n = groups.size();
+    if (n == 0) return;
+
+    // Phase 1: CPU culling (multi-threaded for large group counts)
+    constexpr size_t PARALLEL_THRESHOLD = 64;
+    if (n >= PARALLEL_THRESHOLD) {
+        unsigned int hw = std::thread::hardware_concurrency();
+        unsigned int numThreads = std::max(2u, std::min(hw, unsigned(n / 16)));
+        size_t chunk = (n + numThreads - 1) / numThreads;
+        std::vector<std::future<void>> futures;
+        for (unsigned int t = 0; t < numThreads; t++) {
+            size_t start = t * chunk;
+            size_t end = std::min(start + chunk, n);
+            if (start >= end) break;
+            futures.push_back(std::async(std::launch::async,
+                cullAndOffsetGroups, std::cref(groups), std::ref(caches),
+                start, end, vl, vr, vb, vt, camX, camY));
+        }
+        for (auto& f : futures) f.wait();
+    } else {
+        cullAndOffsetGroups(groups, caches, 0, n, vl, vr, vb, vt, camX, camY);
+    }
+
+    // Phase 2: Upload + draw (serial, uses command buffer)
+    for (size_t si = 0; si < n; si++) {
+        const auto& sg = groups[si];
+        auto& cache = caches[si];
+        if (cache.indices.empty()) continue;
 
         if (sg.instPosMapped) {
             memcpy(sg.instPosMapped, cache.offsets.data(),

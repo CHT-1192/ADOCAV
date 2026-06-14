@@ -71,6 +71,13 @@ public:
     bool empty() const;
     uint32_t totalTileCount() const { return m_totalTileCount; }
 
+    // Exposed for parallel culling
+    static bool frustumCheck(const VisibilityCache& cache, float vl, float vr, float vb, float vt) {
+        if (!cache.valid) return true;
+        return std::abs((float)cache.vl - vl) > 0.5f || std::abs((float)cache.vr - vr) > 0.5f
+            || std::abs((float)cache.vb - vb) > 0.5f || std::abs((float)cache.vt - vt) > 0.5f;
+    }
+
     // Buffer accessors for descriptor set creation
     VkBuffer debugTileBoundsBuf() const { return m_tileBoundsBuf; }
     VkBuffer debugTilePositionsBuf() const { return m_tilePositionsBuf; }
