@@ -782,14 +782,10 @@ void TileMesh::recordCullDispatch(VkCommandBuffer cmd, const VulkanPipeline& pip
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelines.tileCullLayout(), 0, 1, &ds, 0, nullptr);
     vkCmdPushConstants(cmd, pipelines.tileCullLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(CullPush), &pc);
 
-    // Reset indirect instance counts to 0 before dispatch
-    for (size_t gi = 0; gi < m_indirectCommands.size(); gi++)
-        vkCmdFillBuffer(cmd, m_indirectBuf, gi * sizeof(VkDrawIndexedIndirectCommand) + 4, 4, 0);
-
     uint32_t groups = (m_totalTileCount + 63) / 64;
     vkCmdDispatch(cmd, groups, 1, 1);
 
-    // Barrier: compute write → vertex input + indirect draw
+    // Barrier: compute write → vertex input read (offsets + visibility flags)
     VkBufferMemoryBarrier barriers[2] = {};
     barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
     barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -799,30 +795,31 @@ void TileMesh::recordCullDispatch(VkCommandBuffer cmd, const VulkanPipeline& pip
 
     barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
     barriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barriers[1].dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
-    barriers[1].buffer = m_indirectBuf;
+    barriers[1].dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    barriers[1].buffer = m_visibleFlagsBuf;
     barriers[1].size = VK_WHOLE_SIZE;
 
     vkCmdPipelineBarrier(cmd,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
         0, 0, nullptr, 2, barriers, 0, nullptr);
 }
 
 void TileMesh::recordIndirectDraws(VkCommandBuffer cmd, const VulkanPipeline& pipelines) const {
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pipeline(VulkanPipeline::Tile));
 
+    VkDeviceSize offset = 0;
     for (size_t gi = 0; gi < m_shapes.size(); gi++) {
         const auto& sg = m_shapes[gi];
-        VkDeviceSize off = 0;
-        VkBuffer vbs[] = {sg.vertexBuffer, m_instanceOffsetsBuf, sg.instColorBuffer};
-        VkDeviceSize vbo[] = {0, 0, 0};
+        VkBuffer vbs[] = {sg.vertexBuffer, m_instanceOffsetsBuf, sg.instColorBuffer, m_visibleFlagsBuf};
+        VkDeviceSize vbo[] = {0, 0, 0, 0};
         vkCmdBindVertexBuffers(cmd, 0, 1, &vbs[0], &vbo[0]);
         vkCmdBindVertexBuffers(cmd, 1, 1, &vbs[1], &vbo[1]);
         vkCmdBindVertexBuffers(cmd, 2, 1, &vbs[2], &vbo[2]);
+        vkCmdBindVertexBuffers(cmd, 3, 1, &vbs[3], &vbo[3]);
         vkCmdBindIndexBuffer(cmd, sg.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-        VkDeviceSize indirectOff = gi * sizeof(VkDrawIndexedIndirectCommand);
-        vkCmdDrawIndexedIndirect(cmd, m_indirectBuf, indirectOff, 1, sizeof(VkDrawIndexedIndirectCommand));
+        // Draw ALL instances — vertex shader culls invisible ones via aVisible flag
+        vkCmdDrawIndexed(cmd, sg.indexCount, sg.instanceCount, 0, 0, m_groupBaseInstances[gi]);
     }
 }

@@ -166,7 +166,7 @@ bool VulkanPipeline::createGraphicsPipeline(const Config& cfg, VkRenderPass rend
     vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
     if (cfg.instanced) {
-        // 3 bindings for instanced rendering (Tile, Icon)
+        // 4 bindings for instanced rendering (Tile, Icon)
         // Binding 0: vertex data [x, y, z, type] — 4 floats
         bindings[0].binding = 0;
         bindings[0].stride = 4 * sizeof(float);
@@ -182,15 +182,21 @@ bool VulkanPipeline::createGraphicsPipeline(const Config& cfg, VkRenderPass rend
         bindings[2].stride = 7 * sizeof(float);
         bindings[2].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 
+        // Binding 3: visibility flag (uint, per-instance, GPU culling)
+        bindings[3].binding = 3;
+        bindings[3].stride = sizeof(uint32_t);
+        bindings[3].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+
         attrs[0] = {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0};
         attrs[1] = {1, 0, VK_FORMAT_R32_SFLOAT, 3 * sizeof(float)};
         attrs[2] = {2, 1, VK_FORMAT_R32G32B32_SFLOAT, 0};
         attrs[3] = {3, 2, VK_FORMAT_R32G32B32_SFLOAT, 0};
         attrs[4] = {4, 2, VK_FORMAT_R32G32B32_SFLOAT, 3 * sizeof(float)};
         attrs[5] = {5, 2, VK_FORMAT_R32_SFLOAT, 6 * sizeof(float)};
+        attrs[6] = {6, 3, VK_FORMAT_R32_UINT, 0};
 
-        vertexInput.vertexBindingDescriptionCount = 3;
-        vertexInput.vertexAttributeDescriptionCount = 6;
+        vertexInput.vertexBindingDescriptionCount = 4;
+        vertexInput.vertexAttributeDescriptionCount = 7;
     } else {
         // 1 binding for simple rendering (Planet, Trail)
         // Binding 0: vertex position [x, y, z] — 3 floats

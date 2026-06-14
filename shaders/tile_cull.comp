@@ -52,23 +52,15 @@ void main() {
     // AABB vs view rect (+ margin)
     float vl = pc.viewBounds.x, vr = pc.viewBounds.z;
     float vb = pc.viewBounds.y, vt = pc.viewBounds.w;
-    if (bmax.x < vl || bmin.x > vr || bmax.y < vb || bmin.y > vt) {
-        uVisible.flags[tid] = 0u;
-        return;
-    }
+    bool visible = !(bmax.x < vl || bmin.x > vr || bmax.y < vb || bmin.y > vt);
 
-    // Visible
-    uVisible.flags[tid] = 1u;
+    // Always write visibility flag (vertex shader reads it to discard degenerate tris)
+    uVisible.flags[tid] = visible ? 1u : 0u;
 
-    // Write camera-relative offset
+    // Always write camera-relative offset (even invisible tiles need correct offsets)
     vec4 wp = uTilePositions.worldPos[tid];
     uint offIdx = tid * 3u;
     uOffsets.offsets[offIdx]      = wp.x - pc.camWorld.x;
     uOffsets.offsets[offIdx + 1u] = wp.y - pc.camWorld.y;
     uOffsets.offsets[offIdx + 2u] = wp.z;
-
-    // Atomically increment this tile's shape group instance count
-    uint groupIdx = uint(wp.w);  // stored in w component
-    uint cmdOff = groupIdx * 5u + 1u;  // offset to instanceCount field
-    atomicAdd(uIndirect.cmds[cmdOff], 1u);
 }
