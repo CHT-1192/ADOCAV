@@ -467,11 +467,11 @@ void TileMesh::build(const LevelData& level, const std::string& fillColorHex, co
         vmaCreateBuffer(allocator, &ci, &aci, &m_instanceOffsetsBuf, &m_instanceOffsetsAlloc, nullptr);
     }
 
-    // Visible flags buffer
+    // Visible flags buffer (storage + vertex input)
     {
         VkDeviceSize sz = m_totalTileCount * sizeof(uint32_t);
         VkBufferCreateInfo ci = {}; ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; ci.size = sz;
-        ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
         VmaAllocationCreateInfo aci = {};
         aci.usage = VMA_MEMORY_USAGE_AUTO;
         aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
